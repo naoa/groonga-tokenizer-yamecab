@@ -1,0 +1,5 @@
+groonga-tokenizer-yamecab (1.0.0-1) unstable; urgency=low
+
+  * Initial release.
+
+ -- Naoya Murakami <naoya@createfield.com>  Sun, 31 Sun 2014 00:00:00 +0900

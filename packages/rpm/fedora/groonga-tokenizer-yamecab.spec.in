@@ -1,0 +1,55 @@
+%global __provides_exclude_from ^%{_libdir}/groonga/plugins/tokenizers/yamecab\\.so$
+
+Name:		groonga-tokenizer-yamecab
+Version:	@VERSION@
+Release:	1%{?dist}
+Summary:	Yet another MeCab tokenizer plugin for Groonga
+
+Group:		Applications/Text
+License:	LGPLv2.1
+URL:		https://github.com/naoa/groonga-tokenizer-yamecab/
+Source0:	http://packages.createfield.com/source/%{name}/%{name}-%{version}.tar.gz
+
+BuildRequires:	groonga-devel >= 4.0.5
+Requires:	groonga-libs >= 4.0.5
+ExclusiveArch:	%{ix86} x86_64
+
+%description
+This package provides yet another MeCab tokenizer plugin.
+
+%package devel
+Summary:        Development files for groonga-tokenizer-yamecab
+Group:          Development/Libraries
+Requires:       %{name} = %{version}-%{release}
+
+%description devel
+This package provides development files for groonga-tokenizer-yamecab.
+
+%prep
+%setup -q
+
+%build
+%configure \
+  --disable-static
+sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
+sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+make %{?_smp_mflags}
+
+%install
+make install DESTDIR=$RPM_BUILD_ROOT INSTALL="install -p"
+rm -f $RPM_BUILD_ROOT%{_libdir}/groonga/plugins/*/*.la
+rm -f $RPM_BUILD_ROOT%{_libdir}/groonga/plugins/*/*.a
+
+%files
+%doc COPYING
+%dir %{_libdir}/groonga
+%dir %{_libdir}/groonga/plugins
+%dir %{_libdir}/groonga/plugins/tokenizers
+%{_libdir}/groonga/plugins/tokenizers/yamecab.so
+
+%files devel
+%{_libdir}/pkgconfig/groonga-tokenizer-yamecab.pc
+
+%changelog
+* Sun Aug 31 2014 Naoya Murakami <naoya@createfield.com> - 1.0.0-1
+- initial packaging for Fedora

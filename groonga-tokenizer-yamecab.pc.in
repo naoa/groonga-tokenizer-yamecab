@@ -1,0 +1,5 @@
+plugin_name=tokenizers/yamecab
+
+Name: groonga-tokenizer-yamecab
+Description: Yet another MeCab tokenizer plugin for Groonga
+Version: @VERSION@
