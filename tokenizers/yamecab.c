@@ -101,6 +101,7 @@ static grn_obj *
 yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
 {
   const char *parsed_string;
+  char *parsed_string_end;
   grn_yamecab_tokenizer *tokenizer;
   unsigned int normalizer_flags = 0;
   grn_tokenizer_query *query;
@@ -179,16 +180,14 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
                        mecab_strerror(tokenizer->mecab));
     } else {
       unsigned int parsed_string_length;
-      char *parsed_string_end;
       parsed_string_length = strlen(parsed_string);
       parsed_string_end = (char *)parsed_string + parsed_string_length - 2;
       while (parsed_string_end > parsed_string &&
-             isspace(*(unsigned char *)parsed_string_end)) {
+             isspace(*parsed_string_end)) {
         *parsed_string_end = '\0';
         parsed_string_end--;
       }
-      tokenizer->next = parsed_string;
-      tokenizer->end = parsed_string_end + 1;
+      parsed_string_end += 1;
     }
 
     grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
@@ -197,6 +196,9 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
       GRN_PLUGIN_FREE(ctx, tokenizer);
       return NULL;
     }
+
+    tokenizer->next = parsed_string;
+    tokenizer->end = parsed_string_end;
   }
   user_data->ptr = tokenizer;
   grn_tokenizer_token_init(ctx, &(tokenizer->token));
