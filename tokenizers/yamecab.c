@@ -62,7 +62,6 @@ static grn_encoding sole_mecab_encoding = GRN_ENC_NONE;
 
 typedef struct {
   mecab_t *mecab;
-  grn_obj buf;
   const char *next;
   const char *end;
   grn_tokenizer_query *query;
@@ -160,7 +159,6 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
                             &normalized_string,
                             &normalized_string_length,
                             NULL);
-  GRN_TEXT_INIT(&(tokenizer->buf), 0);
   if (query->have_tokenized_delimiter) {
     tokenizer->next = normalized_string;
     tokenizer->end = tokenizer->next + normalized_string_length;
@@ -169,6 +167,7 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
     tokenizer->end = tokenizer->next;
   } else {
     grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
+
     parsed_string = mecab_sparse_tostr2(tokenizer->mecab,
                                         normalized_string,
                                         normalized_string_length);
@@ -179,29 +178,27 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
                        normalized_string_length,
                        mecab_strerror(tokenizer->mecab));
     } else {
-      GRN_TEXT_PUTS(ctx, &(tokenizer->buf), parsed_string);
+      unsigned int parsed_string_length;
+      char *parsed_string_end;
+      parsed_string_length = strlen(parsed_string);
+      parsed_string_end = (char *)parsed_string + parsed_string_length - 2;
+      while (parsed_string_end > parsed_string &&
+             isspace(*(unsigned char *)parsed_string_end)) {
+        *parsed_string_end = '\0';
+        parsed_string_end--;
+      }
+      tokenizer->next = parsed_string;
+      tokenizer->end = parsed_string_end + 1;
     }
+
     grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
     if (!parsed_string) {
       grn_tokenizer_query_close(ctx, tokenizer->query);
       GRN_PLUGIN_FREE(ctx, tokenizer);
       return NULL;
     }
-    {
-      char *buf, *tmp;
-      unsigned int bufsize;
-
-      buf = GRN_TEXT_VALUE(&(tokenizer->buf));
-      bufsize = GRN_TEXT_LEN(&(tokenizer->buf));
-      for (tmp = buf + bufsize - 2;
-           buf <= tmp && isspace(*(unsigned char *)tmp);
-           tmp--) { *tmp = '\0'; }
-      tokenizer->next = buf;
-      tokenizer->end = tmp + 1;
-    }
   }
   user_data->ptr = tokenizer;
-
   grn_tokenizer_token_init(ctx, &(tokenizer->token));
 
   return NULL;
@@ -267,7 +264,6 @@ yamecab_fin(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   }
   grn_tokenizer_token_fin(ctx, &(tokenizer->token));
   grn_tokenizer_query_close(ctx, tokenizer->query);
-  grn_obj_unlink(ctx, &(tokenizer->buf));
   GRN_PLUGIN_FREE(ctx, tokenizer);
   return NULL;
 }
