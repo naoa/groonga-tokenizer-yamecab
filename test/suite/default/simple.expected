@@ -1,6 +1,8 @@
 register tokenizers/yamecab
 [[0,0.0,0.0],true]
-tokenize TokenYaMecab "今日は雨です"
+yamecab_register
+[[0,0.0,0.0],"TokenYaMecab"]
+tokenize TokenYaMecab "今日は、雨です"
 [
   [
     0,
@@ -17,12 +19,16 @@ tokenize TokenYaMecab "今日は雨です"
       "position": 1
     },
     {
-      "value": "雨",
+      "value": "、",
       "position": 2
     },
     {
-      "value": "です",
+      "value": "雨",
       "position": 3
+    },
+    {
+      "value": "です",
+      "position": 4
     }
   ]
 ]

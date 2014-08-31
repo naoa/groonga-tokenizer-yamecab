@@ -1,0 +1,42 @@
+register tokenizers/yamecab
+[[0,0.0,0.0],true]
+yamecab_register --parse_limit 5
+[[0,0.0,0.0],"TokenYaMecab"]
+tokenize TokenYaMecab "今日は、雨です"
+[
+  [
+    0,
+    0.0,
+    0.0
+  ],
+  [
+    {
+      "value": "今",
+      "position": 0
+    },
+    {
+      "value": "日",
+      "position": 1
+    },
+    {
+      "value": "は",
+      "position": 2
+    },
+    {
+      "value": "、",
+      "position": 3
+    },
+    {
+      "value": "雨",
+      "position": 4
+    },
+    {
+      "value": "で",
+      "position": 5
+    },
+    {
+      "value": "す",
+      "position": 6
+    }
+  ]
+]

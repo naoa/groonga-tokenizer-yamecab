@@ -1,0 +1,4 @@
+register tokenizers/yamecab
+
+yamecab_register --parse_limit 5
+tokenize TokenYaMecab "今日は、雨です"

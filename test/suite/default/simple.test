@@ -1,3 +1,4 @@
 register tokenizers/yamecab
 
-tokenize TokenYaMecab "今日は雨です"
+yamecab_register
+tokenize TokenYaMecab "今日は、雨です"
