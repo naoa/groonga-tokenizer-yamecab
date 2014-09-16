@@ -1,11 +1,13 @@
 # Yet another MeCab tokenizer plugin for Groonga
 
-このトークナイザープラグインは、原則、ビルトインのTokenMeCabトークナイザー等と同様のルールで文字列をトークナイズします。
+このトークナイザープラグインは、原則、ビルトインのTokenMecabトークナイザー等と同様のルールで文字列をトークナイズします。
 トークナイザープラグインの登録には、``register``コマンドを利用します。
 
 ```
 register tokenizers/yamecab
 ```
+
+作成中。
 
 ## Install
 

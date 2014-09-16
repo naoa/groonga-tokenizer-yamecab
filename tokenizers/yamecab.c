@@ -63,11 +63,13 @@ static grn_encoding sole_mecab_encoding = GRN_ENC_NONE;
 
 typedef struct {
   mecab_t *mecab;
-  grn_obj buf;
-  const char *next;
-  const char *end;
   grn_tokenizer_query *query;
   grn_tokenizer_token token;
+  unsigned int parse_limit;
+  unsigned int rfind_punct_offset;
+  const mecab_node_t *node;
+  const char *rest_string;
+  unsigned int rest_length;
 } grn_yamecab_tokenizer;
 
 static grn_encoding
@@ -100,7 +102,7 @@ get_mecab_encoding(mecab_t *mecab)
 }
 
 static int
-rfind_punct(grn_ctx *ctx, grn_yamecab_tokenizer *tokenizer,
+rfind_punct(grn_ctx *ctx, grn_encoding encoding,
             const char *string, int start, int offset_limit, int end)
 {
   int punct_position;
@@ -116,7 +118,7 @@ rfind_punct(grn_ctx *ctx, grn_yamecab_tokenizer *tokenizer,
   for (string_tail = string + end;
        string_tail > string_top; string_tail -= char_length) {
     char_length = grn_plugin_charlen(ctx, (char *)string_tail,
-                                           end - start, tokenizer->query->encoding);
+                                     end - start, encoding);
     if (string_tail + char_length && 
         (ispunct(*string_tail) ||
          !memcmp(string_tail, "。", char_length) || 
@@ -150,10 +152,10 @@ check_sjis(const unsigned char *x, int y)
 }
 
 static int
-rfind_lastbyte(GNUC_UNUSED grn_ctx *ctx, grn_yamecab_tokenizer *tokenizer,
+rfind_lastbyte(GNUC_UNUSED grn_ctx *ctx, grn_encoding encoding,
                const char *string, int offset)
 {
-  switch (tokenizer->query->encoding) {
+  switch (encoding) {
   case GRN_ENC_EUC_JP:
     while (!(check_euc((unsigned char *) string, offset))) {
       offset -= 1;
@@ -175,35 +177,36 @@ rfind_lastbyte(GNUC_UNUSED grn_ctx *ctx, grn_yamecab_tokenizer *tokenizer,
   return offset;
 }
 
-static grn_bool
-mecab_sparse(grn_ctx *ctx, grn_yamecab_tokenizer *tokenizer,
-             const char *string, unsigned int string_length)
+static const mecab_node_t*
+split_mecab_sparse_node(grn_ctx *ctx, mecab_t *mecab, grn_encoding encoding,
+                        unsigned int parse_limit, unsigned int rfind_punct_offset,
+                        const char *string, unsigned int string_length,
+                        unsigned int *parsed_string_length)
 {
-  const char *parsed_string;
-  char *parsed_string_end;
-  parsed_string = mecab_sparse_tostr2(tokenizer->mecab,
-                                      string,
-                                      string_length);
-  if (!parsed_string) {
-    GRN_PLUGIN_ERROR(ctx, GRN_TOKENIZER_ERROR,
-                     "[tokenizer][yamecab] "
-                     "mecab_sparse_tostr() failed len=%d err=%s",
-                     string_length,
-                     mecab_strerror(tokenizer->mecab));
-    return GRN_FALSE;
+  const mecab_node_t *node;
+  if (string_length < parse_limit) {
+    node = mecab_sparse_tonode2(mecab, string, string_length);
+    *parsed_string_length = string_length;
   } else {
-    unsigned int parsed_string_length;
-    parsed_string_length = strlen(parsed_string);
-    parsed_string_end = (char *)parsed_string + parsed_string_length - 2;
-    while (parsed_string_end > parsed_string &&
-           isspace(*parsed_string_end)) {
-      *parsed_string_end = '\0';
-      parsed_string_end--;
+    int splitted_string_end = parse_limit;
+    unsigned int splitted_string_length;
+    int punct_position = 0;
+    splitted_string_end = rfind_lastbyte(ctx, encoding,
+                                         string,
+                                         splitted_string_end);
+    if (splitted_string_end == 0) {
+      splitted_string_end = parse_limit;
     }
-    parsed_string_end += 1;
-    GRN_TEXT_PUTS(ctx, &tokenizer->buf, parsed_string);
+    punct_position = rfind_punct(ctx, encoding,
+                                 string,
+                                 0,
+                                 splitted_string_end - rfind_punct_offset,
+                                 splitted_string_end);
+    splitted_string_length = punct_position;
+    node = mecab_sparse_tonode2(mecab, string, splitted_string_length);
+    *parsed_string_length = splitted_string_length;
   }
-  return GRN_TRUE;
+  return node;
 }
 
 static grn_obj *
@@ -215,8 +218,6 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
   grn_obj *normalized_query;
   const char *normalized_string;
   unsigned int normalized_string_length;
-  unsigned int parse_limit = 0;
-  unsigned int rfind_punct_offset = 0;
   grn_obj *var;
 
   query = grn_tokenizer_query_open(ctx, nargs, args, normalizer_flags);
@@ -273,76 +274,56 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
 
   var = grn_plugin_proc_get_var(ctx, user_data, "parse_limit", -1);
   if (GRN_TEXT_LEN(var) != 0) {
-    parse_limit = GRN_UINT32_VALUE(var);
+    tokenizer->parse_limit = GRN_UINT32_VALUE(var);
   }
   var = grn_plugin_proc_get_var(ctx, user_data, "rfind_punct_offset", -1);
   if (GRN_TEXT_LEN(var) != 0) {
-    rfind_punct_offset = GRN_UINT32_VALUE(var);
+    tokenizer->rfind_punct_offset = GRN_UINT32_VALUE(var);
   }
-
-  if (query->have_tokenized_delimiter) {
-    tokenizer->next = normalized_string;
-    tokenizer->end = tokenizer->next + normalized_string_length;
-  } else if (normalized_string_length == 0) {
-    tokenizer->next = "";
-    tokenizer->end = tokenizer->next;
-  } else {
-    grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
-
-    GRN_TEXT_INIT(&(tokenizer->buf), 0);
-    grn_bool rc = GRN_FALSE;
-
-    if (normalized_string_length < parse_limit) {
-      rc = mecab_sparse(ctx, tokenizer, normalized_string, normalized_string_length);
-    } else {
-      int splitted_string_start = 0;
-      int splitted_string_end = parse_limit;
-      unsigned int splitted_string_length;
-      int punct_position = splitted_string_end;
-
-      while (splitted_string_end < (int)normalized_string_length) {
-        splitted_string_end = rfind_lastbyte(ctx, tokenizer,
-                                             normalized_string,
-                                             splitted_string_end);
-        if (splitted_string_end == splitted_string_start) {
-          splitted_string_end = splitted_string_start + parse_limit;
-        } 
-
-        punct_position = rfind_punct(ctx, tokenizer,
-                                     normalized_string,
-                                     splitted_string_start,
-                                     splitted_string_end - rfind_punct_offset,
-                                     splitted_string_end);
-
-        splitted_string_length = punct_position - splitted_string_start;
-        rc = mecab_sparse(ctx, tokenizer,
-                          normalized_string + splitted_string_start,
-                          splitted_string_length);
-        if (!rc) {
-          break;
-        }
-        GRN_TEXT_PUTS(ctx, &tokenizer->buf, " ");
-        splitted_string_start = punct_position;
-        splitted_string_end = splitted_string_start + parse_limit;
-        punct_position = splitted_string_end;
+  grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
+  {
+#define MECAB_PARSE_MIN 4096
+    unsigned int parsed_string_length;
+    grn_bool is_success = GRN_FALSE;
+    while (!is_success) {
+      tokenizer->node = split_mecab_sparse_node(ctx, tokenizer->mecab,
+                                                tokenizer->query->encoding,
+                                                tokenizer->parse_limit,
+                                                tokenizer->rfind_punct_offset,
+                                                normalized_string,
+                                                normalized_string_length,
+                                                &parsed_string_length);
+      if (!tokenizer->node) {
+        tokenizer->parse_limit /= 2;
+        GRN_PLUGIN_LOG(ctx, GRN_LOG_NOTICE,
+                       "[tokenizer][yamecab] "
+                       "mecab_sparse_tonode() failed len=%d err=%s do retry",
+                       parsed_string_length,
+                       mecab_strerror(tokenizer->mecab));
+      } else {
+        tokenizer->node = tokenizer->node->next;
+        tokenizer->rest_length = normalized_string_length - parsed_string_length;
+        tokenizer->rest_string = normalized_string + parsed_string_length;
+        is_success = GRN_TRUE;
       }
-      splitted_string_length = normalized_string_length - splitted_string_start;
-      if (rc && splitted_string_length) {
-        rc = mecab_sparse(ctx, tokenizer,
-                          normalized_string + splitted_string_start,
-                          splitted_string_length);
+      if (tokenizer->parse_limit < MECAB_PARSE_MIN) {
+        break;
       }
     }
-
-    grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
-    if (!rc) {
+    if (!tokenizer->node) {
+      GRN_PLUGIN_ERROR(ctx, GRN_TOKENIZER_ERROR,
+                       "[tokenizer][yamecab] "
+                       "mecab_sparse_tonode() failed len=%d err=%s",
+                       parsed_string_length,
+                       mecab_strerror(tokenizer->mecab));
       grn_tokenizer_query_close(ctx, tokenizer->query);
       GRN_PLUGIN_FREE(ctx, tokenizer);
       return NULL;
     }
-    tokenizer->next = GRN_TEXT_VALUE(&tokenizer->buf);
-    tokenizer->end = tokenizer->next + GRN_TEXT_LEN(&tokenizer->buf);
+#undef MECAB_PARSE_MIN
   }
+  grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
+
   user_data->ptr = tokenizer;
   grn_tokenizer_token_init(ctx, &(tokenizer->token));
 
@@ -354,46 +335,85 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
              grn_user_data *user_data)
 {
   grn_yamecab_tokenizer *tokenizer = user_data->ptr;
-  grn_encoding encoding = tokenizer->query->encoding;
+  grn_tokenizer_status status;
 
-  if (tokenizer->query->have_tokenized_delimiter) {
-    tokenizer->next =
-      grn_tokenizer_tokenized_delimiter_next(ctx,
-                                             &(tokenizer->token),
-                                             tokenizer->next,
-                                             tokenizer->end - tokenizer->next,
-                                             encoding);
+/*
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node surface=%s", tokenizer->node->surface);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node feature=%s", tokenizer->node->feature);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node length=%d", tokenizer->node->length);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node rlength=%d", tokenizer->node->rlength);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node char_type=%d", tokenizer->node->char_type);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node id=%d", tokenizer->node->id);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node posid=%d", tokenizer->node->posid);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node stat=%d", tokenizer->node->stat);
+  GRN_LOG(ctx, GRN_LOG_WARNING, "node isbest=%d", tokenizer->node->isbest);
+*/
+
+  if (tokenizer->node->stat == MECAB_UNK_NODE) {
+    //未知語
+  }
+  
+  if (tokenizer->node->next &&
+      !(tokenizer->node->next->stat == MECAB_BOS_NODE) &&
+      !(tokenizer->node->next->stat == MECAB_EOS_NODE)) {
+    status = GRN_TOKENIZER_CONTINUE;
   } else {
-    const char *token_top = tokenizer->next;
-    const char *token_tail;
-    const char *string_end = tokenizer->end;
-
-    unsigned int char_length;
-    unsigned int rest_length = string_end - token_top;
-    grn_tokenizer_status status;
-
-    for (token_tail = token_top; token_tail < string_end; token_tail += char_length) {
-      if (!(char_length = grn_plugin_charlen(ctx, token_tail,rest_length, encoding))) {
-        tokenizer->next = string_end;
-        break;
-      }
-      if (grn_plugin_isspace(ctx, token_tail, rest_length, encoding)) {
-        const char *token_next = token_tail;
-        while ((char_length = grn_plugin_isspace(ctx, token_next, rest_length, encoding))) {
-          token_next += char_length;
-        }
-        tokenizer->next = token_next;
-        break;
-      }
-    }
-
-    if (token_tail == string_end) {
-      status = GRN_TOKENIZER_LAST;
-    } else {
+    if (tokenizer->rest_length) {
       status = GRN_TOKENIZER_CONTINUE;
+      if (tokenizer->node->stat == MECAB_BOS_NODE ||
+          tokenizer->node->stat == MECAB_EOS_NODE) {
+        status |= GRN_TOKENIZER_TOKEN_SKIP_WITH_POSITION;
+      }
+    } else {
+      status = GRN_TOKENIZER_LAST;
     }
-    grn_tokenizer_token_push(ctx, &(tokenizer->token),
-                             token_top, token_tail - token_top, status);
+  }
+  grn_tokenizer_token_push(ctx, &(tokenizer->token),
+                           tokenizer->node->surface, tokenizer->node->length, status);
+
+  if (!tokenizer->node->next && tokenizer->rest_length) {
+    grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
+    {
+#define MECAB_PARSE_MIN 4096
+      unsigned int parsed_string_length;
+      grn_bool is_success = GRN_FALSE;
+      while (!is_success) {
+        tokenizer->node = split_mecab_sparse_node(ctx, tokenizer->mecab,
+                                                  tokenizer->query->encoding,
+                                                  tokenizer->parse_limit,
+                                                  tokenizer->rfind_punct_offset,
+                                                  tokenizer->rest_string,
+                                                  tokenizer->rest_length,
+                                                  &parsed_string_length);
+        if (!tokenizer->node) {
+          tokenizer->parse_limit /= 2;
+          GRN_PLUGIN_LOG(ctx, GRN_LOG_NOTICE,
+                         "[tokenizer][yamecab] "
+                         "mecab_sparse_tonode() failed len=%d err=%s do retry",
+                         parsed_string_length,
+                         mecab_strerror(tokenizer->mecab));
+        } else {
+          tokenizer->rest_length -= parsed_string_length;
+          tokenizer->rest_string += parsed_string_length;
+          is_success = GRN_TRUE;
+        }
+        if (tokenizer->parse_limit < MECAB_PARSE_MIN) {
+          break;
+        }
+      }
+      if (!tokenizer->node) {
+        GRN_PLUGIN_ERROR(ctx, GRN_TOKENIZER_ERROR,
+                         "[tokenizer][yamecab] "
+                         "mecab_sparse_tonode() failed len=%d err=%s",
+                         parsed_string_length,
+                         mecab_strerror(tokenizer->mecab));
+      }
+#undef MECAB_PARSE_MIN
+    }
+    grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
+  }
+  if (tokenizer->node->next) {
+    tokenizer->node = tokenizer->node->next;
   }
 
   return NULL;
@@ -409,7 +429,6 @@ yamecab_fin(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   }
   grn_tokenizer_token_fin(ctx, &(tokenizer->token));
   grn_tokenizer_query_close(ctx, tokenizer->query);
-  grn_obj_unlink(ctx, &(tokenizer->buf));
   GRN_PLUGIN_FREE(ctx, tokenizer);
   return NULL;
 }
@@ -449,7 +468,7 @@ static grn_obj *
 command_yamecab_register(grn_ctx *ctx, GNUC_UNUSED int nargs,
                          GNUC_UNUSED grn_obj **args, grn_user_data *user_data)
 {
-#define DEFAULT_MECAB_PARSE_LIMIT 2100000
+#define DEFAULT_MECAB_PARSE_LIMIT 1200000
 #define DEFAULT_RFIND_PUNCT_OFFSET 300
 
   int parse_limit = DEFAULT_MECAB_PARSE_LIMIT;
