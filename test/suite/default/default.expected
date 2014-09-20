@@ -1,7 +1,10 @@
 register tokenizers/yamecab
 [[0,0.0,0.0],true]
-yamecab_register
-[[0,0.0,0.0],"TokenYaMecab"]
+load --table @yamecab
+[
+{"_key": "TokenYaMecab", "@updates":true}
+]
+[[0,0.0,0.0],1]
 tokenize TokenYaMecab "今日は、雨です"
 [
   [

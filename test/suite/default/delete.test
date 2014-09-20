@@ -1,0 +1,9 @@
+register tokenizers/yamecab
+
+load --table @yamecab
+[
+{"_key": "TokenYaMecab", "@updates":true}
+]
+tokenizer_list
+delete --table @yamecab --key "TokenYaMecab"
+tokenizer_list

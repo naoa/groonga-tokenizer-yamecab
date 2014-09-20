@@ -1,0 +1,7 @@
+register tokenizers/yamecab
+
+load --table @yamecab
+[
+{"_key": "TokenYaMecab", "@updates":true}
+]
+tokenizer_list

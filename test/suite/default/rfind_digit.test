@@ -1,4 +1,7 @@
 register tokenizers/yamecab
 
-yamecab_register --parse_limit 5
+load --table @yamecab
+[
+{"_key": "TokenYaMecab", "parse_limit":5, "@updates":true}
+]
 tokenize TokenYaMecab "12345678"
