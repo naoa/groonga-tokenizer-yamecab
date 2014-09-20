@@ -622,12 +622,8 @@ GRN_PLUGIN_REGISTER(grn_ctx *ctx)
   grn_obj *key_type;
 
   if (!is_additional_regist) {
-    grn_expr_var vars[2];
-    grn_plugin_expr_var_init(ctx, &vars[0], "parse_limit", -1);
-    grn_plugin_expr_var_init(ctx, &vars[1], "rfind_punct_offset", -1);
-
     grn_plugin_command_create(ctx, "yamecab_register", -1,
-                              command_yamecab_register, 0, vars);
+                              command_yamecab_register, 0, NULL);
     grn_plugin_command_create(ctx, "yamecab_delete", -1,
                               command_yamecab_delete, 0, NULL);
     is_additional_regist = GRN_TRUE;
