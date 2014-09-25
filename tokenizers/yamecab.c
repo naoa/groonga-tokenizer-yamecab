@@ -57,6 +57,8 @@ typedef enum {
   GRN_TOKEN_DEL
 } grn_token_mode;
 
+#define GRN_STRING_ENABLE_NORMALIZER_FILTER (0x01<<5)
+
 static mecab_t *sole_mecab = NULL;
 static grn_plugin_mutex *sole_mecab_mutex = NULL;
 static grn_encoding sole_mecab_encoding = GRN_ENC_NONE;
@@ -221,7 +223,7 @@ static grn_obj *
 yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
 {
   grn_yamecab_tokenizer *tokenizer;
-  unsigned int normalizer_flags = 0;
+  unsigned int normalizer_flags = GRN_STRING_ENABLE_NORMALIZER_FILTER;
   grn_tokenizer_query *query;
   grn_obj *normalized_query;
   const char *normalized_string;
