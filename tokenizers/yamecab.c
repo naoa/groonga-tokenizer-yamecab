@@ -358,10 +358,6 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   GRN_LOG(ctx, GRN_LOG_WARNING, "node isbest=%d", tokenizer->node->isbest);
 */
 
-  if (tokenizer->node->stat == MECAB_UNK_NODE) {
-    //未知語
-  }
-
   if (tokenizer->node->next &&
       !(tokenizer->node->next->stat == MECAB_BOS_NODE) &&
       !(tokenizer->node->next->stat == MECAB_EOS_NODE)) {
@@ -371,14 +367,25 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
       status = GRN_TOKENIZER_CONTINUE;
       if (tokenizer->node->stat == MECAB_BOS_NODE ||
           tokenizer->node->stat == MECAB_EOS_NODE) {
-        status |= GRN_TOKENIZER_TOKEN_SKIP_WITH_POSITION;
+        status |= GRN_TOKEN_SKIP_WITH_POSITION;
       }
     } else {
       status = GRN_TOKENIZER_LAST;
     }
   }
+
+  /* should be customizable */
+  if (!(!strncmp(tokenizer->node->feature, "名詞", 6) ||
+        !strncmp(tokenizer->node->feature, "動詞", 6) ||
+        !strncmp(tokenizer->node->feature, "形容詞", 9) ||
+        !strncmp(tokenizer->node->feature, "連体詞", 9) ||
+        tokenizer->node->stat == MECAB_UNK_NODE)) {
+    status |= GRN_TOKEN_SKIP;
+  }
+
   grn_tokenizer_token_push(ctx, &(tokenizer->token),
-                           tokenizer->node->surface, tokenizer->node->length, status);
+                           tokenizer->node->surface, tokenizer->node->length,
+                           status);
 
   if (!tokenizer->node->next && tokenizer->rest_length) {
     grn_plugin_mutex_lock(ctx, sole_mecab_mutex);

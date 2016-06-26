@@ -16,22 +16,7 @@ tokenize TokenYaMecab "今日は、雨です"
       "force_prefix": false
     },
     {
-      "value": "は",
-      "position": 1,
-      "force_prefix": false
-    },
-    {
-      "value": "、",
-      "position": 2,
-      "force_prefix": false
-    },
-    {
       "value": "雨",
-      "position": 3,
-      "force_prefix": false
-    },
-    {
-      "value": "です",
       "position": 4,
       "force_prefix": false
     }
