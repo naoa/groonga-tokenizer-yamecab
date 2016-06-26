@@ -1,5 +1,4 @@
-register tokenizers/yamecab
-yamecab_register
+plugin_register tokenizers/yamecab
 
 table_create Entries TABLE_NO_KEY
 column_create Entries body COLUMN_SCALAR LongText

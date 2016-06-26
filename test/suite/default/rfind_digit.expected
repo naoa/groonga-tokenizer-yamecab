@@ -1,9 +1,24 @@
 register tokenizers/yamecab
 [[0,0.0,0.0],true]
-load --table @yamecab
-[
-{"_key": "TokenYaMecab", "parse_limit":5, "@updates":true}
-]
-[[0,0.0,0.0],1]
+config_set tokenizer-yamecab.parse_limit 5
+[[0,0.0,0.0],true]
 tokenize TokenYaMecab "12345678"
-[[0,0.0,0.0],[{"value":"12345","position":0},{"value":"678","position":1}]]
+[
+  [
+    0,
+    0.0,
+    0.0
+  ],
+  [
+    {
+      "value": "12345",
+      "position": 0,
+      "force_prefix": false
+    },
+    {
+      "value": "678",
+      "position": 1,
+      "force_prefix": false
+    }
+  ]
+]

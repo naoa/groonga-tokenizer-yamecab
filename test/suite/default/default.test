@@ -1,7 +1,3 @@
-register tokenizers/yamecab
+plugin_register tokenizers/yamecab
 
-load --table @yamecab
-[
-{"_key": "TokenYaMecab", "@updates":true}
-]
 tokenize TokenYaMecab "今日は、雨です"

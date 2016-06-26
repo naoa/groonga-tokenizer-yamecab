@@ -1,6 +1,5 @@
-register tokenizers/yamecab
+plugin_register tokenizers/yamecab
 
-yamecab_register
 table_create Entries TABLE_NO_KEY
 column_create Entries body COLUMN_SCALAR LongText
 table_create Terms TABLE_PAT_KEY ShortText --default_tokenizer TokenYaMecab

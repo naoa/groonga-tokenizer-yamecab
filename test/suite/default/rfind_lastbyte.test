@@ -1,7 +1,5 @@
-register tokenizers/yamecab
+plugin_register tokenizers/yamecab
 
-load --table @yamecab
-[
-{"_key": "TokenYaMecab", "parse_limit":5, "@updates":true}
-]
+config_set tokenizer-yamecab.parse_limit 5
+
 tokenize TokenYaMecab "今日は、雨です"

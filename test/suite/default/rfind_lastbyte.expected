@@ -1,10 +1,7 @@
-register tokenizers/yamecab
+plugin_register tokenizers/yamecab
 [[0,0.0,0.0],true]
-load --table @yamecab
-[
-{"_key": "TokenYaMecab", "parse_limit":5, "@updates":true}
-]
-[[0,0.0,0.0],1]
+config_set tokenizer-yamecab.parse_limit 5
+[[0,0.0,0.0],true]
 tokenize TokenYaMecab "今日は、雨です"
 [
   [
@@ -15,31 +12,38 @@ tokenize TokenYaMecab "今日は、雨です"
   [
     {
       "value": "今",
-      "position": 0
+      "position": 0,
+      "force_prefix": false
     },
     {
       "value": "日",
-      "position": 1
+      "position": 1,
+      "force_prefix": false
     },
     {
       "value": "は",
-      "position": 2
+      "position": 2,
+      "force_prefix": false
     },
     {
       "value": "、",
-      "position": 3
+      "position": 3,
+      "force_prefix": false
     },
     {
       "value": "雨",
-      "position": 4
+      "position": 4,
+      "force_prefix": false
     },
     {
       "value": "で",
-      "position": 5
+      "position": 5,
+      "force_prefix": false
     },
     {
       "value": "す",
-      "position": 6
+      "position": 6,
+      "force_prefix": false
     }
   ]
 ]
