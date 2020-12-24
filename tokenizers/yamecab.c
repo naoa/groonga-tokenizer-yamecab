@@ -346,6 +346,8 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   grn_yamecab_tokenizer *tokenizer = user_data->ptr;
   grn_tokenizer_status status;
 
+  grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
+
 /*
   GRN_LOG(ctx, GRN_LOG_WARNING, "node surface=%s", tokenizer->node->surface);
   GRN_LOG(ctx, GRN_LOG_WARNING, "node feature=%s", tokenizer->node->feature);
@@ -388,7 +390,6 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
                            status);
 
   if (!tokenizer->node->next && tokenizer->rest_length) {
-    grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
     {
 #define MECAB_PARSE_MIN 4096
       unsigned int parsed_string_length;
@@ -426,11 +427,11 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
       }
 #undef MECAB_PARSE_MIN
     }
-    grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
   }
   if (tokenizer->node->next) {
     tokenizer->node = tokenizer->node->next;
   }
+  grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
 
   return NULL;
 }
