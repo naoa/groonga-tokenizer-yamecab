@@ -53,7 +53,9 @@
 
 #define GRN_STRING_ENABLE_NORMALIZER_FILTER (0x01<<5)
 
+static mecab_model_t *sole_mecab_model = NULL;
 static mecab_t *sole_mecab = NULL;
+
 static grn_plugin_mutex *sole_mecab_mutex = NULL;
 static grn_encoding sole_mecab_encoding = GRN_ENC_NONE;
 
@@ -61,7 +63,9 @@ static grn_encoding sole_mecab_encoding = GRN_ENC_NONE;
 #define DEFAULT_RFIND_PUNCT_OFFSET 300
 
 typedef struct {
+  mecab_model_t *mecab_model;
   mecab_t *mecab;
+  mecab_lattice_t *lattice;
   grn_tokenizer_query *query;
   grn_tokenizer_token token;
   unsigned int parse_limit;
@@ -177,14 +181,18 @@ rfind_lastbyte(GNUC_UNUSED grn_ctx *ctx, grn_encoding encoding,
 }
 
 static const mecab_node_t*
-split_mecab_sparse_node(grn_ctx *ctx, mecab_t *mecab, grn_encoding encoding,
+split_mecab_sparse_node(grn_ctx *ctx, mecab_t *mecab, mecab_lattice_t *lattice, grn_encoding encoding,
                         unsigned int parse_limit, unsigned int rfind_punct_offset,
                         const char *string, unsigned int string_length,
                         unsigned int *parsed_string_length)
 {
   const mecab_node_t *node;
+
   if (string_length < parse_limit) {
-    node = mecab_sparse_tonode2(mecab, string, string_length);
+    mecab_lattice_set_sentence2(lattice, string, string_length);
+    mecab_parse_lattice(mecab, lattice);
+    node = mecab_lattice_get_bos_node(lattice);
+
     *parsed_string_length = string_length;
   } else {
     int splitted_string_end = parse_limit;
@@ -202,7 +210,11 @@ split_mecab_sparse_node(grn_ctx *ctx, mecab_t *mecab, grn_encoding encoding,
                                  splitted_string_end - rfind_punct_offset,
                                  splitted_string_end);
     splitted_string_length = punct_position;
-    node = mecab_sparse_tonode2(mecab, string, splitted_string_length);
+
+    mecab_lattice_set_sentence2(lattice, string, splitted_string_length);
+    mecab_parse_lattice(mecab, lattice);
+    node = mecab_lattice_get_bos_node(lattice);
+
     *parsed_string_length = splitted_string_length;
   }
   return node;
@@ -227,7 +239,12 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
   if (!sole_mecab) {
     grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
     if (!sole_mecab) {
-      sole_mecab = mecab_new2("-Owakati");
+      const char v[] = "-Owakati";
+      const char *opt = &v[0];
+
+      sole_mecab_model = mecab_model_new(1, (char **)&opt);
+      sole_mecab = mecab_model_new_tagger(sole_mecab_model);
+
       if (!sole_mecab) {
         GRN_PLUGIN_ERROR(ctx, GRN_TOKENIZER_ERROR,
                          "[tokenizer][yamecab] "
@@ -262,7 +279,9 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
                      "memory allocation to grn_yamecab_tokenizer failed");
     return NULL;
   }
+  tokenizer->mecab_model = sole_mecab_model;
   tokenizer->mecab = sole_mecab;
+  tokenizer->lattice = mecab_model_new_lattice(sole_mecab_model);
   tokenizer->query = query;
 
   normalized_query = query->normalized_query;
@@ -289,13 +308,12 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
     tokenizer->rfind_punct_offset = DEFAULT_RFIND_PUNCT_OFFSET;
   }
 
-  grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
   {
 #define MECAB_PARSE_MIN 4096
     unsigned int parsed_string_length;
     grn_bool is_success = GRN_FALSE;
     while (!is_success) {
-      tokenizer->node = split_mecab_sparse_node(ctx, tokenizer->mecab,
+      tokenizer->node = split_mecab_sparse_node(ctx, tokenizer->mecab, tokenizer->lattice,
                                                 tokenizer->query->encoding,
                                                 tokenizer->parse_limit,
                                                 tokenizer->rfind_punct_offset,
@@ -331,7 +349,6 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
     }
 #undef MECAB_PARSE_MIN
   }
-  grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
 
   user_data->ptr = tokenizer;
   grn_tokenizer_token_init(ctx, &(tokenizer->token));
@@ -346,7 +363,6 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   grn_yamecab_tokenizer *tokenizer = user_data->ptr;
   grn_tokenizer_status status;
 
-  grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
 
 /*
   GRN_LOG(ctx, GRN_LOG_WARNING, "node surface=%s", tokenizer->node->surface);
@@ -395,7 +411,7 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
       unsigned int parsed_string_length;
       grn_bool is_success = GRN_FALSE;
       while (!is_success) {
-        tokenizer->node = split_mecab_sparse_node(ctx, tokenizer->mecab,
+        tokenizer->node = split_mecab_sparse_node(ctx, tokenizer->mecab, tokenizer->lattice,
                                                   tokenizer->query->encoding,
                                                   tokenizer->parse_limit,
                                                   tokenizer->rfind_punct_offset,
@@ -431,7 +447,6 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   if (tokenizer->node->next) {
     tokenizer->node = tokenizer->node->next;
   }
-  grn_plugin_mutex_unlock(ctx, sole_mecab_mutex);
 
   return NULL;
 }
@@ -444,6 +459,7 @@ yamecab_fin(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   if (!tokenizer) {
     return NULL;
   }
+  mecab_lattice_destroy(tokenizer->lattice);
   grn_tokenizer_token_fin(ctx, &(tokenizer->token));
   grn_tokenizer_query_close(ctx, tokenizer->query);
   GRN_PLUGIN_FREE(ctx, tokenizer);
@@ -454,9 +470,15 @@ static void
 check_mecab_dictionary_encoding(GNUC_UNUSED grn_ctx *ctx)
 {
 #ifdef HAVE_MECAB_DICTIONARY_INFO_T
+  mecab_model_t *model;
   mecab_t *mecab;
+  const char v[] = "-Owakati";
+  const char *opt = &v[0];
 
-  mecab = mecab_new2("-Owakati");
+  model = mecab_model_new(1, (char **)&opt);
+
+  mecab = mecab_model_new_tagger(model);
+
   if (mecab) {
     grn_encoding encoding;
     int have_same_encoding_dictionary = 0;
@@ -464,6 +486,7 @@ check_mecab_dictionary_encoding(GNUC_UNUSED grn_ctx *ctx)
     encoding = GRN_CTX_GET_ENCODING(ctx);
     have_same_encoding_dictionary = encoding == get_mecab_encoding(mecab);
     mecab_destroy(mecab);
+    mecab_model_destory(model);
 
     if (!have_same_encoding_dictionary) {
       GRN_PLUGIN_ERROR(ctx, GRN_TOKENIZER_ERROR,
@@ -512,7 +535,10 @@ GRN_PLUGIN_FIN(grn_ctx *ctx)
 {
   if (sole_mecab) {
     mecab_destroy(sole_mecab);
+    mecab_model_destroy(sole_mecab_model);
+
     sole_mecab = NULL;
+    sole_mecab_model = NULL;
   }
   if (sole_mecab_mutex) {
     grn_plugin_mutex_close(ctx, sole_mecab_mutex);
