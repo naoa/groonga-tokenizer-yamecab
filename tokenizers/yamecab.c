@@ -188,6 +188,9 @@ split_mecab_sparse_node(grn_ctx *ctx, mecab_t *mecab, mecab_lattice_t *lattice, 
 {
   const mecab_node_t *node;
 
+  if (string_length == 0) {
+    return NULL;
+  }
   if (string_length < parse_limit) {
     mecab_lattice_set_sentence2(lattice, string, string_length);
     mecab_parse_lattice(mecab, lattice);
@@ -236,6 +239,12 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
   if (!query) {
     return NULL;
   }
+  if (query->length == 0) {
+    ctx->errbuf[0] = '\0';
+    ctx->rc = GRN_SUCCESS;
+  }
+
+
   if (!sole_mecab) {
     grn_plugin_mutex_lock(ctx, sole_mecab_mutex);
     if (!sole_mecab) {
@@ -308,7 +317,10 @@ yamecab_init(grn_ctx *ctx, int nargs, grn_obj **args, grn_user_data *user_data)
     tokenizer->rfind_punct_offset = DEFAULT_RFIND_PUNCT_OFFSET;
   }
 
-  {
+  tokenizer->node = NULL;
+  tokenizer->rest_length = 0;
+  tokenizer->rest_string = NULL;
+  if (normalized_string_length > 0) {
 #define MECAB_PARSE_MIN 4096
     unsigned int parsed_string_length;
     grn_bool is_success = GRN_FALSE;
@@ -363,18 +375,13 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
   grn_yamecab_tokenizer *tokenizer = user_data->ptr;
   grn_tokenizer_status status;
 
-
-/*
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node surface=%s", tokenizer->node->surface);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node feature=%s", tokenizer->node->feature);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node length=%d", tokenizer->node->length);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node rlength=%d", tokenizer->node->rlength);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node char_type=%d", tokenizer->node->char_type);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node id=%d", tokenizer->node->id);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node posid=%d", tokenizer->node->posid);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node stat=%d", tokenizer->node->stat);
-  GRN_LOG(ctx, GRN_LOG_WARNING, "node isbest=%d", tokenizer->node->isbest);
-*/
+  if (!tokenizer || !tokenizer->node) {
+    status = GRN_TOKENIZER_LAST;
+    grn_tokenizer_token_push(ctx, &(tokenizer->token),
+                             NULL, 0,
+                             status);
+    return NULL;
+  }
 
   if (tokenizer->node->next &&
       !(tokenizer->node->next->stat == MECAB_BOS_NODE) &&
@@ -444,7 +451,7 @@ yamecab_next(grn_ctx *ctx, GNUC_UNUSED int nargs, GNUC_UNUSED grn_obj **args,
 #undef MECAB_PARSE_MIN
     }
   }
-  if (tokenizer->node->next) {
+  if (tokenizer->node && tokenizer->node->next) {
     tokenizer->node = tokenizer->node->next;
   }
 
