@@ -59,7 +59,7 @@ static mecab_t *sole_mecab = NULL;
 static grn_plugin_mutex *sole_mecab_mutex = NULL;
 static grn_encoding sole_mecab_encoding = GRN_ENC_NONE;
 
-#define DEFAULT_MECAB_PARSE_LIMIT 500000
+#define DEFAULT_MECAB_PARSE_LIMIT 300000
 #define DEFAULT_RFIND_PUNCT_OFFSET 300
 
 typedef struct {
